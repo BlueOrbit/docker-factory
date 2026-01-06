@@ -236,29 +236,28 @@ docker buildx imagetools inspect ghcr.io/<org>/<image>:<tag>
 
 ---
 
-## 8. pre-build.sh 使用规范
+## 8. pre-build.sh 使用规范（Hard Rules）
 
-`pre-build.sh` 仅用于：
+**规则 1：默认禁用宿主预处理，除非证明必要（Default Off）**
 
-* **必须在宿主环境执行的预计算**
-* 输出结果必须落在镜像构建上下文内
-* 脚本应 **幂等、可重复执行**
+*   **默认路径**：所有预处理应优先在 **Dockerfile 多阶段构建（Multi-stage builds）** 中完成。
+*   **例外允许**：只有在“必须使用宿主环境能力”（如复杂的凭据交互、特定硬件访问或极度耗时的非标准构建）的情况下，才允许使用 `pre-build.sh`。
 
-推荐优先方案：
-➡️ 能放进 Dockerfile 的，一律放进 Dockerfile（可缓存、可复现）
+**规则 2：pre-build.sh 必须声明并被 CI 校验依赖（Strict Dependencies）**
 
----
+如果必须使用 `pre-build.sh`，必须严格遵守以下约束：
 
-## 9. 实施步骤（Roadmap）
+1.  **依赖声明**：
+    *   必须提供 `pre-build.requires` 文件（或在 `image.yml` 中声明）。
+    *   必须列出所有外部工具及其 **版本策略**。
+2.  **脚本质量要求**：
+    *   **固定版本**：依赖工具必须指定具体版本（如 `jq=1.6`, `go=1.22.x`），严禁使用 `latest`。
+    *   **产物校验**：所有下载的外部产物必须校验 `sha256` 签名。
+    *   **确定性输出（Deterministic）**：相同的输入必须产生完全相同的输出（字节级一致）。
+3.  **CI 强制校验**：
+    *   CI 将增加 `lint pre-build` 任务。
+    *   检查脚本是否使用了未在 `pre-build.requires` 中声明的工具。
+    *   至少进行基础的 grep/AST 检查以确保合规。
 
-1. 初始化仓库与目录结构
-2. 为每个镜像添加 `Dockerfile + image.yml`
-3. 实现 `Detect Changes` 逻辑（含依赖传播）
-4. 完成 build-and-publish.yml
-5. 验证：
 
-   * main 分支单镜像变更
-   * tag 触发全量发布
-   * multi-arch manifest 正确
-6. 文档完善（README）
 

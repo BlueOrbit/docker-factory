@@ -1,0 +1,6 @@
+image_name: spreadsheet
+platforms:
+  - linux/amd64
+  - linux/arm64
+depends_on:
+  - biomini

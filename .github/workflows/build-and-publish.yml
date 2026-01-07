@@ -7,6 +7,9 @@ on:
       - "images/**"
     tags:
       - "v*"
+  pull_request:
+    paths:
+      - "images/**"
   workflow_dispatch:
 
 permissions:
@@ -39,8 +42,21 @@ jobs:
         id: set-matrix
         run: |
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            echo "Tag detected, building all images."
-            MATRIX_JSON=$(python3 scripts/generate_matrix.py --all)
+            echo "Tag detected, detecting incremental changes..."
+            PREV_TAG=$(git describe --tags --abbrev=0 HEAD^)
+            echo "Previous tag: $PREV_TAG"
+
+            CHANGED_FILES=$(git diff --name-only $PREV_TAG ${{ github.sha }} | grep '^images/' || true)
+
+            if [ -z "$CHANGED_FILES" ]; then
+              echo "No changes in images/ directory since $PREV_TAG."
+              echo "matrix={\"include\": []}" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+
+            CHANGED_IMAGES=$(echo "$CHANGED_FILES" | cut -d/ -f2 | sort -u | jq -R . | jq -s .)
+            echo "Changed images: $CHANGED_IMAGES"
+            MATRIX_JSON=$(python3 scripts/generate_matrix.py --changes "$CHANGED_IMAGES")
           else
             echo "Detecting changes..."
             CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^images/' || true)
@@ -101,7 +117,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.path }}
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           platforms: ${{ matrix.platforms }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

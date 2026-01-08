@@ -1,5 +1,5 @@
 # A minimal, stable Linux environment for Rust projects like sharkdp/bat
-FROM debian:bookworm-slim
+FROM python:3.12-slim-bookworm
 
 WORKDIR /app
 
@@ -19,8 +19,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # - libssl-dev, ca-certificates: common native deps + HTTPS for cargo
 # - git: fetch repo
 # - curl: install rustup
-# - python3, python3-dev, python3-pip: for Python package management with uv
 # - tzdata: avoids timezone-related prompts/tools
+# Note: Python is already included in the base image (python:3.12-slim-bookworm)
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
@@ -30,9 +30,6 @@ RUN set -eux; \
       build-essential \
       pkg-config \
       libssl-dev \
-      python3 \
-      python3-dev \
-      python3-pip \
       tzdata \
     ; \
     rm -rf /var/lib/apt/lists/*

@@ -1,4 +1,4 @@
-image_name: biomini
+image_name: biomni
 platforms:
   - linux/amd64
   - linux/arm64

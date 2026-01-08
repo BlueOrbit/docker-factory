@@ -1,0 +1,5 @@
+image_name: sharkdp-bat
+platforms:
+  - linux/amd64
+  - linux/arm64
+depends_on: []

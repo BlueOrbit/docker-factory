@@ -1,6 +1,8 @@
 # A minimal, stable Linux environment for Rust projects like sharkdp/bat
 FROM debian:bookworm-slim
 
+WORKDIR /app
+
 ENV DEBIAN_FRONTEND=noninteractive \
     # Make Rust builds more reproducible and less flaky in CI-like environments
     CARGO_INCREMENTAL=0 \
@@ -19,8 +21,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # - curl: install rustup
 # - python3: occasionally used by project scripts/tests (safe to include)
 # - tzdata: avoids timezone-related prompts/tools
-RUN --mount=type=cache,target=/var/cache/apt \
-    set -eux; \
+RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
       ca-certificates \
@@ -34,10 +35,22 @@ RUN --mount=type=cache,target=/var/cache/apt \
     ; \
     rm -rf /var/lib/apt/lists/*
 
+# ---- Install uv for Python package management ----
+# Install uv: automatically matches target platform architecture
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+RUN chmod +x /usr/local/bin/uv
+
+# ---- Install Python test dependencies ----
+# Pre-install test dependencies to avoid installing them in test scripts
+ENV UV_SYSTEM_PYTHON=1
+RUN uv pip install --no-cache \
+    "pytest>=8.4.1" \
+    "pytest-json-ctrf>=0.3.5"
+
 # ---- Rust toolchain ----
 # Pin toolchain for determinism (adjust if your dataset standardizes a different version).
-# bat v0.22.0 should build fine on stable; 1.70+ is generally safe on bookworm.
-ARG RUST_TOOLCHAIN=1.74.1
+# bat requires rust 1.87+ according to Cargo.toml
+ARG RUST_TOOLCHAIN=1.87.0
 
 RUN set -eux; \
     mkdir -p "${CARGO_HOME}" "${RUSTUP_HOME}"; \
@@ -46,18 +59,12 @@ RUN set -eux; \
     rustc --version; \
     cargo --version
 
-# Create a non-root user (many benches prefer this)
-RUN set -eux; \
-    useradd -m -u 1000 -s /bin/bash runner; \
-    mkdir -p /work; \
-    chown -R runner:runner /work /opt/cargo /opt/rustup
-
-USER runner
-WORKDIR /work
 
 # Helpful defaults for consistent logs/output
 ENV TERM=xterm-256color \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
+
+RUN cd /app && git clone --depth 1 https://github.com/sharkdp/bat.git .
 
 # Entrypoint intentionally omitted; evaluation harness should run commands explicitly.

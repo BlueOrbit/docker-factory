@@ -19,7 +19,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # - libssl-dev, ca-certificates: common native deps + HTTPS for cargo
 # - git: fetch repo
 # - curl: install rustup
-# - python3: occasionally used by project scripts/tests (safe to include)
+# - python3, python3-dev, python3-pip: for Python package management with uv
 # - tzdata: avoids timezone-related prompts/tools
 RUN set -eux; \
     apt-get update; \
@@ -31,6 +31,8 @@ RUN set -eux; \
       pkg-config \
       libssl-dev \
       python3 \
+      python3-dev \
+      python3-pip \
       tzdata \
     ; \
     rm -rf /var/lib/apt/lists/*

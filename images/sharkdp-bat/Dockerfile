@@ -64,6 +64,8 @@ ENV TERM=xterm-256color \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
 
-RUN cd /app && git clone --depth 1 https://github.com/sharkdp/bat.git .
+RUN cd /app && git clone https://github.com/sharkdp/bat.git .
+
+RUN cargo install git-delta
 
 # Entrypoint intentionally omitted; evaluation harness should run commands explicitly.

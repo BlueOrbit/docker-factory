@@ -66,6 +66,6 @@ ENV TERM=xterm-256color \
 
 RUN cd /app && git clone https://github.com/sharkdp/bat.git .
 
-RUN cargo install git-delta
+RUN cargo install git-delta --locked
 
 # Entrypoint intentionally omitted; evaluation harness should run commands explicitly.

@@ -49,14 +49,18 @@ RUN uv pip install --no-cache \
 # ---- Rust toolchain ----
 # Pin toolchain for determinism (adjust if your dataset standardizes a different version).
 # bat requires rust 1.87+ according to Cargo.toml
-ARG RUST_TOOLCHAIN=1.87.0
+ARG RUST_TOOLCHAIN=stable
 
 RUN set -eux; \
+    rm -rf "${CARGO_HOME}" "${RUSTUP_HOME}"; \
     mkdir -p "${CARGO_HOME}" "${RUSTUP_HOME}"; \
-    curl -fsSL https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal --default-toolchain "${RUST_TOOLCHAIN}"; \
-    rustup --version; \
-    rustc --version; \
-    cargo --version
+    curl -fsSL https://sh.rustup.rs | sh -s -- -y \
+      --no-modify-path \
+      --profile minimal \
+      --default-toolchain "${RUST_TOOLCHAIN}"; \
+    /opt/cargo/bin/rustup --version; \
+    /opt/cargo/bin/rustc --version; \
+    /opt/cargo/bin/cargo --version
 
 
 # Helpful defaults for consistent logs/output

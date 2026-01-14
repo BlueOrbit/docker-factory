@@ -8,7 +8,7 @@ RUN set -eux && \
     git clean -fd
 
 # Install Python dependencies using uv (consistent with base image)
-RUN uv pip install --no-cache swe-rex
+RUN uv pip install --no-cache swe-rex==1.2.0
 
 # Create required directories for logs and test results
 RUN mkdir -p /logs /app/test/results

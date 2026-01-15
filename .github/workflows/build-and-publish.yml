@@ -20,7 +20,12 @@ jobs:
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      layer-0: ${{ steps.set-matrix.outputs.layer-0 }}
+      layer-1: ${{ steps.set-matrix.outputs.layer-1 }}
+      layer-2: ${{ steps.set-matrix.outputs.layer-2 }}
+      layer-3: ${{ steps.set-matrix.outputs.layer-3 }}
+      layer-4: ${{ steps.set-matrix.outputs.layer-4 }}
+      total-layers: ${{ steps.set-matrix.outputs.total-layers }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -50,20 +55,20 @@ jobs:
 
             if [ -z "$CHANGED_FILES" ]; then
               echo "No changes in images/ directory since $PREV_TAG."
-              echo "matrix={\"include\": []}" >> $GITHUB_OUTPUT
+              echo "total-layers=0" >> $GITHUB_OUTPUT
               exit 0
             fi
 
             CHANGED_IMAGES=$(echo "$CHANGED_FILES" | cut -d/ -f2 | sort -u | jq -R . | jq -s .)
             echo "Changed images: $CHANGED_IMAGES"
-            MATRIX_JSON=$(python3 scripts/generate_matrix.py --changes "$CHANGED_IMAGES")
+            LAYERED_JSON=$(python3 scripts/generate_matrix.py --changes "$CHANGED_IMAGES")
           else
             echo "Detecting changes..."
             CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^images/' || true)
             
             if [ -z "$CHANGED_FILES" ]; then
               echo "No changes in images/ directory."
-              echo "matrix={\"include\": []}" >> $GITHUB_OUTPUT
+              echo "total-layers=0" >> $GITHUB_OUTPUT
               exit 0
             fi
 
@@ -71,19 +76,222 @@ jobs:
             CHANGED_IMAGES=$(echo "$CHANGED_FILES" | cut -d/ -f2 | sort -u | jq -R . | jq -s .)
             
             echo "Changed images: $CHANGED_IMAGES"
-            MATRIX_JSON=$(python3 scripts/generate_matrix.py --changes "$CHANGED_IMAGES")
+            LAYERED_JSON=$(python3 scripts/generate_matrix.py --changes "$CHANGED_IMAGES")
           fi
           
-          echo "Generated matrix: $MATRIX_JSON"
-          echo "matrix=$MATRIX_JSON" >> $GITHUB_OUTPUT
+          echo "Generated layered matrix: $LAYERED_JSON"
+          
+          # 解析分层数据并输出到 GitHub Actions
+          TOTAL_LAYERS=$(echo "$LAYERED_JSON" | jq '.layers | length')
+          echo "total-layers=$TOTAL_LAYERS" >> $GITHUB_OUTPUT
+          
+          # 为每一层输出矩阵（最多支持 5 层）
+          for i in {0..4}; do
+            LAYER_MATRIX=$(echo "$LAYERED_JSON" | jq -c ".layers[$i] // {\"include\": []}")
+            echo "layer-$i=$LAYER_MATRIX" >> $GITHUB_OUTPUT
+            echo "Layer $i: $LAYER_MATRIX"
+          done
 
-  build-and-push:
+  # Layer 0: 无依赖的基础镜像
+  build-layer-0:
     needs: detect-changes
     runs-on: ubuntu-latest
-    if: ${{ fromJson(needs.detect-changes.outputs.matrix).include[0] }}
+    if: ${{ fromJson(needs.detect-changes.outputs.layer-0).include[0] }}
     strategy:
       fail-fast: false
-      matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+      matrix: ${{ fromJson(needs.detect-changes.outputs.layer-0) }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/${{ matrix.name }}
+          tags: |
+            type=sha,format=long
+            type=ref,event=branch
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.path }}
+          push: ${{ github.event_name != 'pull_request' }}
+          platforms: ${{ matrix.platforms }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,scope=${{ matrix.name }},mode=max
+
+  # Layer 1: 依赖 Layer 0 的镜像
+  build-layer-1:
+    needs: [detect-changes, build-layer-0]
+    runs-on: ubuntu-latest
+    if: ${{ always() && fromJson(needs.detect-changes.outputs.layer-1).include[0] && needs.build-layer-0.result != 'failure' }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.detect-changes.outputs.layer-1) }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/${{ matrix.name }}
+          tags: |
+            type=sha,format=long
+            type=ref,event=branch
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.path }}
+          push: ${{ github.event_name != 'pull_request' }}
+          platforms: ${{ matrix.platforms }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,scope=${{ matrix.name }},mode=max
+
+  # Layer 2: 依赖 Layer 1 的镜像
+  build-layer-2:
+    needs: [detect-changes, build-layer-1]
+    runs-on: ubuntu-latest
+    if: ${{ always() && fromJson(needs.detect-changes.outputs.layer-2).include[0] && needs.build-layer-1.result != 'failure' }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.detect-changes.outputs.layer-2) }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/${{ matrix.name }}
+          tags: |
+            type=sha,format=long
+            type=ref,event=branch
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.path }}
+          push: ${{ github.event_name != 'pull_request' }}
+          platforms: ${{ matrix.platforms }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,scope=${{ matrix.name }},mode=max
+
+  # Layer 3: 依赖 Layer 2 的镜像
+  build-layer-3:
+    needs: [detect-changes, build-layer-2]
+    runs-on: ubuntu-latest
+    if: ${{ always() && fromJson(needs.detect-changes.outputs.layer-3).include[0] && needs.build-layer-2.result != 'failure' }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.detect-changes.outputs.layer-3) }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/${{ matrix.name }}
+          tags: |
+            type=sha,format=long
+            type=ref,event=branch
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.path }}
+          push: ${{ github.event_name != 'pull_request' }}
+          platforms: ${{ matrix.platforms }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,scope=${{ matrix.name }},mode=max
+
+  # Layer 4: 依赖 Layer 3 的镜像
+  build-layer-4:
+    needs: [detect-changes, build-layer-3]
+    runs-on: ubuntu-latest
+    if: ${{ always() && fromJson(needs.detect-changes.outputs.layer-4).include[0] && needs.build-layer-3.result != 'failure' }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.detect-changes.outputs.layer-4) }}
     
     steps:
       - name: Checkout repository

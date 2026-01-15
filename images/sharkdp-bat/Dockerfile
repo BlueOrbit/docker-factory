@@ -31,6 +31,8 @@ RUN set -eux; \
       pkg-config \
       libssl-dev \
       tzdata \
+      zlib1g-dev \     
+      libonig-dev \    
     ; \
     rm -rf /var/lib/apt/lists/*
 

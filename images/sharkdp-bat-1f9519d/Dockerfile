@@ -11,4 +11,4 @@ WORKDIR /app
 # RUN uv pip install --no-cache swe-rex==1.2.0
 
 # Create required directories for logs and test results
-RUN mkdir -p /logs /app/test/results
+RUN mkdir -p /logs 

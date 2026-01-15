@@ -86,8 +86,9 @@ jobs:
           echo "total-layers=$TOTAL_LAYERS" >> $GITHUB_OUTPUT
           
           # 为每一层输出矩阵（最多支持 5 层）
+          # 注意：只提取 include 字段，不包含 layer 字段
           for i in {0..4}; do
-            LAYER_MATRIX=$(echo "$LAYERED_JSON" | jq -c ".layers[$i] // {\"include\": []}")
+            LAYER_MATRIX=$(echo "$LAYERED_JSON" | jq -c "if .layers[$i] then {\"include\": .layers[$i].include} else {\"include\": []} end")
             echo "layer-$i=$LAYER_MATRIX" >> $GITHUB_OUTPUT
             echo "Layer $i: $LAYER_MATRIX"
           done

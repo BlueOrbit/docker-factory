@@ -1,0 +1,4 @@
+image_name: fc-docker
+platforms:
+  - linux/amd64
+depends_on: []
